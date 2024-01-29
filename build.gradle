@@ -56,10 +56,20 @@ import com.vanniktech.maven.publish.SonatypeHost
 
 allprojects {
     plugins.withId("com.vanniktech.maven.publish") {
-        mavenPublishing {
-            publishToMavenCentral(SonatypeHost.S01)
+        publishing {
+            repositories {
+                maven {
+                    def props = new Properties()
+                    file(System.getenv("HOME") + "/signing/secrets.properties").withInputStream { props.load(it) }
 
-            signAllPublications()
+                    name = "dodoMaven"
+                    url = "https://maven.pkg.github.com/dodobrands/sceneview-android"
+                    credentials {
+                        username props.getProperty("username")
+                        password props.getProperty("password")
+                    }
+                }
+            }
         }
     }
 }
