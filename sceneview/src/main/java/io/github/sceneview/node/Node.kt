@@ -3,7 +3,7 @@ package io.github.sceneview.node
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.view.GestureDetector
-import android.view.GestureDetector.OnContextClickListener
+//import android.view.GestureDetector.OnContextClickListener
 import android.view.GestureDetector.OnDoubleTapListener
 import android.view.MotionEvent
 import com.google.android.filament.Engine
@@ -77,7 +77,7 @@ open class Node(
     @FilamentEntity val entity: Entity = EntityManager.get().create(),
 ) : GestureDetector.OnGestureListener,
     OnDoubleTapListener,
-    OnContextClickListener,
+//    OnContextClickListener,
     MoveGestureDetector.OnMoveListener,
     RotateGestureDetector.OnRotateListener,
     ScaleGestureDetector.OnScaleListener,
@@ -395,7 +395,7 @@ open class Node(
     var onSingleTapConfirmed: ((e: MotionEvent) -> Boolean)? = null
     var onDoubleTap: ((e: MotionEvent) -> Boolean)? = null
     var onDoubleTapEvent: ((e: MotionEvent) -> Boolean)? = null
-    var onContextClick: ((e: MotionEvent) -> Boolean)? = null
+//    var onContextClick: ((e: MotionEvent) -> Boolean)? = null
     var onMoveBegin: ((detector: MoveGestureDetector, e: MotionEvent) -> Boolean)? = null
     var onMove: ((detector: MoveGestureDetector, e: MotionEvent, worldPosition: Position) -> Boolean)? =
         null
@@ -837,7 +837,7 @@ open class Node(
 
     override fun onSingleTapUp(e: MotionEvent) = onSingleTapUp?.invoke(e) ?: false
     override fun onScroll(
-        e1: MotionEvent?,
+        e1: MotionEvent,
         e2: MotionEvent,
         distanceX: Float,
         distanceY: Float
@@ -848,7 +848,7 @@ open class Node(
     }
 
     override fun onFling(
-        e1: MotionEvent?,
+        e1: MotionEvent,
         e2: MotionEvent,
         velocityX: Float,
         velocityY: Float
@@ -857,7 +857,7 @@ open class Node(
     override fun onSingleTapConfirmed(e: MotionEvent) = onSingleTapConfirmed?.invoke(e) ?: false
     override fun onDoubleTap(e: MotionEvent) = onDoubleTap?.invoke(e) ?: false
     override fun onDoubleTapEvent(e: MotionEvent) = onDoubleTapEvent?.invoke(e) ?: false
-    override fun onContextClick(e: MotionEvent) = onContextClick?.invoke(e) ?: false
+//    override fun onContextClick(e: MotionEvent) = onContextClick?.invoke(e) ?: false
 
     override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         return if (isPositionEditable && onMoveBegin?.invoke(detector, e) != false) {
@@ -1010,7 +1010,7 @@ open class Node(
 
 interface OnNodeGestureListener : GestureDetector.OnGestureListener,
     OnDoubleTapListener,
-    OnContextClickListener,
+//    OnContextClickListener,
     MoveGestureDetector.OnMoveListener,
     RotateGestureDetector.OnRotateListener,
     ScaleGestureDetector.OnScaleListener

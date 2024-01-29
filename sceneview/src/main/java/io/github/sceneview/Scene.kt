@@ -431,7 +431,7 @@ fun rememberOnGestureListener(
     onSingleTapConfirmed: (e: MotionEvent, node: Node?) -> Unit = { _, _ -> },
     onDoubleTap: (e: MotionEvent, node: Node?) -> Unit = { _, _ -> },
     onDoubleTapEvent: (e: MotionEvent, node: Node?) -> Unit = { _, _ -> },
-    onContextClick: (e: MotionEvent, node: Node?) -> Unit = { _, _ -> },
+//    onContextClick: (e: MotionEvent, node: Node?) -> Unit = { _, _ -> },
     onMoveBegin: (detector: MoveGestureDetector, e: MotionEvent, node: Node?) -> Unit = { _, _, _ -> },
     onMove: (detector: MoveGestureDetector, e: MotionEvent, node: Node?) -> Unit = { _, _, _ -> },
     onMoveEnd: (detector: MoveGestureDetector, e: MotionEvent, node: Node?) -> Unit = { _, _, _ -> },
@@ -462,7 +462,7 @@ fun rememberOnGestureListener(
 
             override fun onDoubleTap(e: MotionEvent, node: Node?) = onDoubleTap(e, node)
             override fun onDoubleTapEvent(e: MotionEvent, node: Node?) = onDoubleTapEvent(e, node)
-            override fun onContextClick(e: MotionEvent, node: Node?) = onContextClick(e, node)
+//            override fun onContextClick(e: MotionEvent, node: Node?) = onContextClick(e, node)
             override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent, node: Node?) =
                 onMoveBegin(detector, e, node)
 
