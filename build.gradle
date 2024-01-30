@@ -52,8 +52,6 @@ apply plugin: 'org.jetbrains.dokka'
 //    }
 //}
 
-import com.vanniktech.maven.publish.SonatypeHost
-
 allprojects {
     plugins.withId("com.vanniktech.maven.publish") {
         publishing {
