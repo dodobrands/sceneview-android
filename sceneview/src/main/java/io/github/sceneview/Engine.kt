@@ -16,6 +16,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.VertexBuffer
 import com.google.android.filament.View
 import com.google.android.filament.gltfio.AssetLoader
+import io.github.sceneview.environment.Environment
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.loaders.ModelLoader
@@ -42,6 +43,11 @@ fun Engine.safeDestroyEntity(entity: Entity) = runCatching { destroyEntity(entit
 fun Engine.safeDestroyCamera(camera: Camera) {
     runCatching { destroyCameraComponent(camera.entity) }
     safeDestroyEntity(camera.entity)
+}
+
+fun Engine.safeDestroyEnvironment(environment: Environment) {
+    environment.indirectLight?.let { safeDestroyIndirectLight(it) }
+    environment.skybox?.let { safeDestroySkybox(it) }
 }
 
 fun Engine.safeDestroyIndirectLight(indirectLight: IndirectLight) =

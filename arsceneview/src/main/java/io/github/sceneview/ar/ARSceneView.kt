@@ -235,6 +235,7 @@ open class ARSceneView @JvmOverloads constructor(
     sharedView,
     sharedRenderer,
     sharedCameraNode,
+    null,
     sharedMainLightNode,
     sharedEnvironment,
     isOpaque,
@@ -378,9 +379,6 @@ open class ARSceneView @JvmOverloads constructor(
 
     val onLightEstimationUpdated: ((estimation: LightEstimator.Estimation?) -> Unit)? = null
 
-    override val cameraGestureDetector = null
-    override val cameraManipulator = null
-
     private val lifecycleObserver = LifeCycleObserver()
     override var lifecycle: Lifecycle?
         get() = super.lifecycle
@@ -399,7 +397,7 @@ open class ARSceneView @JvmOverloads constructor(
         setCameraNode(sharedCameraNode ?: createARCameraNode(engine).also {
             defaultCameraNode = it
         })
-        environment = sharedEnvironment ?: createAREnvironment(environmentLoader)
+        environment = sharedEnvironment ?: createAREnvironment(engine)
         sharedLifecycle?.addObserver(lifecycleObserver)
     }
 
@@ -607,9 +605,6 @@ open class ARSceneView @JvmOverloads constructor(
 
         fun createARCameraStream(materialLoader: MaterialLoader) = ARCameraStream(materialLoader)
 
-        fun createAREnvironment(environmentLoader: EnvironmentLoader, isOpaque: Boolean = true) =
-            createEnvironment(environmentLoader, isOpaque = true).copy(
-                skybox = null
-            )
+        fun createAREnvironment(engine: Engine) = createEnvironment(engine, isOpaque = true, skybox = null)
     }
 }
