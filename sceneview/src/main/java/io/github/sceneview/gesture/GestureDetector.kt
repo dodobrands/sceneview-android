@@ -26,7 +26,7 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
         fun onSingleTapConfirmed(e: MotionEvent, node: Node?)
         fun onDoubleTap(e: MotionEvent, node: Node?)
         fun onDoubleTapEvent(e: MotionEvent, node: Node?)
-        fun onContextClick(e: MotionEvent, node: Node?)
+//        fun onContextClick(e: MotionEvent, node: Node?)
         fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent, node: Node?)
         fun onMove(detector: MoveGestureDetector, e: MotionEvent, node: Node?)
         fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent, node: Node?)
@@ -48,7 +48,7 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
         override fun onSingleTapConfirmed(e: MotionEvent, node: Node?) {}
         override fun onDoubleTap(e: MotionEvent, node: Node?) {}
         override fun onDoubleTapEvent(e: MotionEvent, node: Node?) {}
-        override fun onContextClick(e: MotionEvent, node: Node?) {}
+//        override fun onContextClick(e: MotionEvent, node: Node?) {}
         override fun onMoveBegin(detector: MoveGestureDetector, e: MotionEvent, node: Node?) {}
         override fun onMove(detector: MoveGestureDetector, e: MotionEvent, node: Node?) {}
         override fun onMoveEnd(detector: MoveGestureDetector, e: MotionEvent, node: Node?) {}
@@ -121,10 +121,10 @@ open class GestureDetector(context: Context, var listener: OnGestureListener?) {
                 listener?.onDoubleTapEvent(e, touchedNode)
             }
 
-            override fun onContextClick(e: MotionEvent) = super.onContextClick(e).also {
-                touchedNode?.onContextClick(e)
-                listener?.onContextClick(e, touchedNode)
-            }
+//            override fun onContextClick(e: MotionEvent) = super.onContextClick(e).also {
+//                touchedNode?.onContextClick(e)
+//                listener?.onContextClick(e, touchedNode)
+//            }
         }
     )
 
