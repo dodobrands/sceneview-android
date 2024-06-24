@@ -1,5 +1,7 @@
 package io.github.sceneview.geometries
 
+import android.graphics.Path
+import android.graphics.PathMeasure
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
 import com.google.android.filament.IndexBuffer
@@ -13,7 +15,6 @@ import io.github.sceneview.triangulation.Delaunator
 import io.github.sceneview.triangulation.Earcut
 
 class Shape private constructor(
-    engine: Engine,
     primitiveType: PrimitiveType,
     vertices: List<Vertex>,
     vertexBuffer: VertexBuffer,
@@ -28,7 +29,6 @@ class Shape private constructor(
     uvScale: UvScale,
     color: Color?
 ) : Geometry(
-    engine,
     primitiveType,
     vertices,
     vertexBuffer,
@@ -51,10 +51,36 @@ class Shape private constructor(
         var color: Color? = null
             private set
 
-        fun polygonPath(path: List<Position2>, holes: List<Int> = listOf()) = apply {
-            this.polygonPath = path
+        fun polygonPath(points: List<Position2>, holes: List<Int> = listOf()) = apply {
+            this.polygonPath = points
             this.polygonHoles = holes
         }
+
+        /**
+         * Create a Polygon shape from a Path
+         *
+         * @param path the path to create the shape from
+         * @param stepSize Adjust this value to control the desired point density
+         */
+        fun polygonPath(path: Path, stepSize: Float = 1.0f, holes: List<Int> = listOf()) =
+            polygonPath(
+                points = buildList {
+                    // forceClosed = false for not including endpoint twice
+                    val pathMeasure = PathMeasure(path, false)
+                    var distance = 0f
+                    while (distance < pathMeasure.length) {
+                        // Get the current point coordinates at a specific distance along the path
+                        add(
+                            FloatArray(2).apply {
+                                pathMeasure.getPosTan(distance, this, null)
+                            }.let { Position2(it[0], it[1]) }
+                        )
+                        // Increase distance to get the next point
+                        distance += stepSize
+                    }
+                },
+                holes = holes
+            )
 
         fun delaunayPoints(delaunayPoints: List<Position2>) = apply {
             this.delaunayPoints = delaunayPoints
@@ -74,7 +100,6 @@ class Shape private constructor(
             )
             return build(engine) { vertexBuffer, indexBuffer, offsets, boundingBox ->
                 Shape(
-                    engine,
                     primitiveType,
                     vertices,
                     vertexBuffer,
@@ -107,6 +132,7 @@ class Shape private constructor(
         private set
 
     fun update(
+        engine: Engine,
         polygonPath: List<Position2> = this.polygonPath,
         polygonHoles: List<Int> = this.polygonHoles,
         delaunayPoints: List<Position2> = this.delaunayPoints,
@@ -114,15 +140,19 @@ class Shape private constructor(
         uvScale: UvScale = this.uvScale,
         color: Color? = this.color
     ) = apply {
+        update(
+            engine = engine,
+            vertices = getVertices(polygonPath + delaunayPoints),
+            primitivesIndices = getPolygonIndices(polygonPath, polygonHoles) +
+                    getDelaunayIndices(delaunayPoints)
+        )
+
         this.polygonPath = polygonPath
         this.polygonHoles = polygonHoles
         this.delaunayPoints = delaunayPoints
         this.normal = normal
         this.uvScale = uvScale
         this.color = color
-        vertices = getVertices(polygonPath + delaunayPoints)
-        primitivesIndices =
-            getPolygonIndices(polygonPath, polygonHoles) + getDelaunayIndices(delaunayPoints)
     }
 
     companion object {

@@ -4,31 +4,58 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.MediaRecorder
 import android.opengl.EGLContext
+import android.os.Build
 import android.util.AttributeSet
-import android.view.*
+import android.view.Choreographer
+import android.view.MotionEvent
+import android.view.Surface
+import android.view.SurfaceView
+import android.view.WindowManager
+import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
+import androidx.annotation.RequiresApi
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.findFragment
-import androidx.lifecycle.*
-import com.google.android.filament.*
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
+import com.google.android.filament.ColorGrading
+import com.google.android.filament.Colors
+import com.google.android.filament.Engine
+import com.google.android.filament.Fence
+import com.google.android.filament.Filament
+import com.google.android.filament.IndirectLight
+import com.google.android.filament.LightManager
+import com.google.android.filament.MaterialInstance
+import com.google.android.filament.RenderableManager
+import com.google.android.filament.Renderer
+import com.google.android.filament.Scene
+import com.google.android.filament.Skybox
+import com.google.android.filament.SwapChain
+import com.google.android.filament.ToneMapper
 import com.google.android.filament.View
-import com.google.android.filament.View.*
+import com.google.android.filament.View.AntiAliasing
+import com.google.android.filament.View.BlendMode
+import com.google.android.filament.View.QualityLevel
+import com.google.android.filament.Viewport
 import com.google.android.filament.android.DisplayHelper
 import com.google.android.filament.android.UiHelper
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.utils.KTX1Loader
 import com.google.android.filament.utils.Manipulator
 import com.google.android.filament.utils.Utils
-import com.google.ar.sceneform.rendering.ViewAttachmentManager
 import dev.romainguy.kotlin.math.Float2
 import io.github.sceneview.collision.CollisionSystem
+import io.github.sceneview.collision.HitResult
 import io.github.sceneview.environment.Environment
+import io.github.sceneview.gesture.CameraGestureDetector
 import io.github.sceneview.gesture.GestureDetector
-import io.github.sceneview.gesture.HitTestGestureDetector
 import io.github.sceneview.gesture.MoveGestureDetector
 import io.github.sceneview.gesture.RotateGestureDetector
 import io.github.sceneview.gesture.ScaleGestureDetector
 import io.github.sceneview.gesture.orbitHomePosition
+import io.github.sceneview.gesture.targetPosition
 import io.github.sceneview.gesture.transform
 import io.github.sceneview.loaders.EnvironmentLoader
 import io.github.sceneview.loaders.MaterialLoader
@@ -43,9 +70,12 @@ import io.github.sceneview.model.ModelInstance
 import io.github.sceneview.node.CameraNode
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.Node
-import io.github.sceneview.utils.*
-import kotlin.math.min
-import com.google.android.filament.utils.GestureDetector as CameraGestureDetector
+import io.github.sceneview.node.ViewNode2
+import io.github.sceneview.utils.OpenGL
+import io.github.sceneview.utils.SurfaceMirrorer
+import io.github.sceneview.utils.intervalSeconds
+import io.github.sceneview.utils.readBuffer
+import io.github.sceneview.utils.setKeepScreenOn
 
 typealias Entity = Int
 typealias EntityInstance = Int
@@ -121,21 +151,6 @@ open class SceneView @JvmOverloads constructor(
      */
     sharedCameraNode: CameraNode? = null,
     /**
-     * Helper that enables camera interaction similar to sketchfab or Google Maps.
-     *
-     * Needs to be a callable function because it can be reinitialized in case of viewport change
-     * or camera node manual position changed.
-     *
-     * The first onTouch event will make the first manipulator build. So you can change the camera
-     * position before any user gesture.
-     *
-     * Clients notify the camera manipulator of various mouse or touch events, then periodically
-     * call its getLookAt() method so that they can adjust their camera(s). Three modes are
-     * supported: ORBIT, MAP, and FREE_FLIGHT. To construct a manipulator instance, the desired mode
-     * is passed into the create method.
-     */
-    val cameraManipulator: ((View, CameraNode) -> Manipulator)? = defaultCameraManipulator,
-    /**
      * Always add a direct light source since it is required for shadowing.
      *
      * We highly recommend adding an [IndirectLight] as well.
@@ -170,17 +185,43 @@ open class SceneView @JvmOverloads constructor(
      */
     sharedCollisionSystem: CollisionSystem? = null,
     /**
-     * Detects various gestures and events.
+     * Helper that enables camera interaction similar to sketchfab or Google Maps.
      *
-     * The gesture listener callback will notify users when a particular motion event has occurred.
+     * Needs to be a callable function because it can be reinitialized in case of viewport change
+     * or camera node manual position changed.
+     *
+     * The first onTouch event will make the first manipulator build. So you can change the camera
+     * position before any user gesture.
+     *
+     * Clients notify the camera manipulator of various mouse or touch events, then periodically
+     * call its getLookAt() method so that they can adjust their camera(s). Three modes are
+     * supported: ORBIT, MAP, and FREE_FLIGHT. To construct a manipulator instance, the desired mode
+     * is passed into the create method.
+     */
+    cameraManipulator: Manipulator? = createDefaultCameraManipulator(sharedCameraNode?.worldPosition),
+    /**
+     * Used for Node's that can display an Android [View]
+     *
+     * Manages a [FrameLayout] that is attached directly to a [WindowManager] that other views can be
+     * added and removed from.
+     *
+     * To render a [View], the [View] must be attached to a [WindowManager] so that it can be properly
+     * drawn. This class encapsulates a [FrameLayout] that is attached to a [WindowManager] that other
+     * views can be added to as children. This allows us to safely and correctly draw the [View]
+     * associated with a [RenderableManager] [Entity] and a [MaterialInstance] while keeping them
+     * isolated from the rest of the activities View hierarchy.
+     *
+     * Additionally, this manages the lifecycle of the window to help ensure that the window is
+     * added/removed from the WindowManager at the appropriate times.
+     */
+    var viewNodeWindowManager: ViewNode2.WindowManager? = null,
+    /**
+     * The listener invoked for all the gesture detector callbacks.
      *
      * Responds to Android touch events with listeners.
      */
-    sharedGestureDetector: GestureDetector? = null,
-    /**
-     * The listener invoked for all the gesture detector callbacks.
-     */
-    sharedOnGestureListener: GestureDetector.OnGestureListener? = null,
+    onGestureListener: GestureDetector.OnGestureListener? = null,
+    var onTouchEvent: ((e: MotionEvent, hitResult: HitResult?) -> Boolean)? = null,
     sharedActivity: ComponentActivity? = null,
     sharedLifecycle: Lifecycle? = null,
 ) : SurfaceView(context, attrs, defStyleAttr, defStyleRes) {
@@ -367,6 +408,13 @@ open class SceneView @JvmOverloads constructor(
         }
 
     /**
+     * Physics system to handle collision between nodes, hit testing on a nodes,...
+     */
+    val collisionSystem = (sharedCollisionSystem ?: createCollisionSystem(view).also {
+        defaultCollisionSystem = it
+    })
+
+    /**
      * Invoked when an frame is processed.
      *
      * Registers a callback to be invoked when a valid Frame is processing.
@@ -378,30 +426,48 @@ open class SceneView @JvmOverloads constructor(
     var onFrame: ((frameTimeNanos: Long) -> Unit)? = null
 
     /**
-     * Physics system to handle collision between nodes, hit testing on a nodes,...
-     */
-    val collisionSystem = (sharedCollisionSystem ?: createCollisionSystem(view).also {
-        defaultCollisionSystem = it
-    })
-
-    /**
      * Detects various gestures and events.
      *
      * The gesture listener callback will notify users when a particular motion event has occurred.
      * Responds to Android touch events with listeners.
      */
-    var gestureDetector =
-        (sharedGestureDetector ?: HitTestGestureDetector(context, collisionSystem)).apply {
-            listener = sharedOnGestureListener
-        }
+    var gestureDetector: GestureDetector? =
+        GestureDetector(context = context, listener = onGestureListener)
+        private set
 
     /**
      * The listener invoked for all the gesture detector callbacks.
+     *
+     * Responds to Android touch events with listeners.
      */
-    var onGestureListener
-        get() = gestureDetector.listener
+    var onGestureListener: GestureDetector.OnGestureListener?
+        get() = gestureDetector?.listener
         set(value) {
-            gestureDetector.listener = value
+            gestureDetector?.listener = value
+        }
+
+    var cameraGestureDetector: CameraGestureDetector? =
+        CameraGestureDetector(viewHeight = ::getHeight, manipulator = cameraManipulator)
+        private set
+
+    /**
+     * Helper that enables camera interaction similar to sketchfab or Google Maps.
+     *
+     * Needs to be a callable function because it can be reinitialized in case of viewport change
+     * or camera node manual position changed.
+     *
+     * The first onTouch event will make the first manipulator build. So you can change the camera
+     * position before any user gesture.
+     *
+     * Clients notify the camera manipulator of various mouse or touch events, then periodically
+     * call its getLookAt() method so that they can adjust their camera(s). Three modes are
+     * supported: ORBIT, MAP, and FREE_FLIGHT. To construct a manipulator instance, the desired mode
+     * is passed into the create method.
+     */
+    var cameraManipulator: Manipulator?
+        get() = cameraGestureDetector?.manipulator
+        set(value) {
+            cameraGestureDetector?.manipulator = value
         }
 
     protected open val activity: ComponentActivity? = sharedActivity
@@ -419,18 +485,12 @@ open class SceneView @JvmOverloads constructor(
         }
 
     protected var isDestroyed = false
-    protected val viewAttachmentManager
-        get() = _viewAttachmentManager ?: ViewAttachmentManager(context, this).also {
-            _viewAttachmentManager = it
-        }
 
     private val displayHelper = DisplayHelper(context)
     private var swapChain: SwapChain? = null
     private val lifecycleObserver = LifeCycleObserver()
     private val frameCallback = FrameCallback()
-    private var _viewAttachmentManager: ViewAttachmentManager? = null
-    private var cameraGestureDetector: CameraGestureDetector? = null
-    private var _cameraManipulator: Manipulator? = null
+
     private var lastTouchEvent: MotionEvent? = null
     private var surfaceMirrorer: SurfaceMirrorer? = null
     private var lastFrameTimeNanos: Long? = null
@@ -454,7 +514,7 @@ open class SceneView @JvmOverloads constructor(
             defaultCameraNode = it
         })
 
-        sharedLifecycle?.addObserver(lifecycleObserver)
+        lifecycle?.addObserver(lifecycleObserver)
     }
 
     /**
@@ -574,6 +634,7 @@ open class SceneView @JvmOverloads constructor(
     open fun destroy() {
         if (!isDestroyed) {
             lifecycle = null
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
 
             runCatching { uiHelper.detach() }
 
@@ -611,10 +672,12 @@ open class SceneView @JvmOverloads constructor(
 //            transformManager.openLocalTransformTransaction()
 
             // Only update the camera manipulator if a touch has been made
-            _cameraManipulator?.let { manipulator ->
-                manipulator.update(frameTimeNanos.intervalSeconds(lastFrameTimeNanos).toFloat())
-                // Extract the camera basis from the helper and push it to the Filament camera.
-                cameraNode.transform = manipulator.transform
+            cameraManipulator?.let { manipulator ->
+                if (lastTouchEvent != null) {
+                    manipulator.update(frameTimeNanos.intervalSeconds(lastFrameTimeNanos).toFloat())
+                    // Extract the camera basis from the helper and push it to the Filament camera.
+                    cameraNode.transform = manipulator.transform
+                }
             }
 
             onFrame?.invoke(frameTimeNanos)
@@ -647,27 +710,37 @@ open class SceneView @JvmOverloads constructor(
         super.onDetachedFromWindow()
     }
 
-    protected open fun onResized(width: Int, height: Int) {
-        view.viewport = Viewport(0, 0, width, height)
-        cameraNode.updateProjection()
-        updateCameraManipulator()
-    }
-
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(motionEvent: MotionEvent): Boolean {
+    override fun onTouchEvent(event: MotionEvent): Boolean {
         // This makes sure that the view's onTouchListener is called.
-        if (!super.onTouchEvent(motionEvent)) {
-            lastTouchEvent = motionEvent
-            gestureDetector.onTouchEvent(motionEvent)
-            cameraGestureDetector?.onTouchEvent(motionEvent)
+        if (!super.onTouchEvent(event)) {
+            lastTouchEvent = event
+            val hitResult = collisionSystem.hitTest(event).firstOrNull {
+                it.node.isTouchable
+            }
+            if (onTouchEvent?.invoke(event, hitResult) != true &&
+                hitResult?.node?.onTouchEvent(event, hitResult) != true
+            ) {
+                gestureDetector?.onTouchEvent(event, hitResult)
+                cameraGestureDetector?.onTouchEvent(event)
+            }
+
             return true
         }
         return false
     }
 
+    protected open fun onResized(width: Int, height: Int) {
+        view.viewport = Viewport(0, 0, width, height)
+        cameraManipulator?.setViewport(width, height)
+        cameraNode.updateProjection()
+    }
+
     internal fun addNode(node: Node) {
         node.collisionSystem = collisionSystem
-        addEntities(node.sceneEntities)
+        if (node.sceneEntities.isNotEmpty()) {
+            scene.addEntities(node.sceneEntities.toIntArray())
+        }
         node.onChildAdded += ::addNode
         node.onChildRemoved += ::removeNode
         node.onAddedToScene(scene)
@@ -676,7 +749,9 @@ open class SceneView @JvmOverloads constructor(
 
     internal fun removeNode(node: Node) {
         node.collisionSystem = null
-        removeEntities(node.sceneEntities)
+        if (node.sceneEntities.isNotEmpty()) {
+            scene.removeEntities(node.sceneEntities.toIntArray())
+        }
         node.onChildAdded -= ::addNode
         node.onChildRemoved -= ::removeNode
         node.onRemovedFromScene(scene)
@@ -686,20 +761,6 @@ open class SceneView @JvmOverloads constructor(
     internal fun replaceNode(oldNode: Node?, newNode: Node?) {
         oldNode?.let { removeNode(it) }
         newNode?.let { addNode(it) }
-    }
-
-    fun addEntity(@FilamentEntity entity: Entity) = scene.addEntity(entity)
-    fun removeEntity(@FilamentEntity entity: Entity) = scene.removeEntity(entity)
-    fun addEntities(@FilamentEntity entities: List<Entity>) {
-        if (entities.isNotEmpty()) {
-            scene.addEntities(entities.toIntArray())
-        }
-    }
-
-    fun removeEntities(@FilamentEntity entities: List<Entity>) {
-        if (entities.isNotEmpty()) {
-            scene.removeEntities(entities.toIntArray())
-        }
     }
 
     fun setOnGestureListener(
@@ -776,14 +837,12 @@ open class SceneView @JvmOverloads constructor(
         }
     }
 
-    fun updateCameraManipulator() {
-        _cameraManipulator = cameraManipulator?.invoke(view, cameraNode)
-        cameraGestureDetector = _cameraManipulator?.let { CameraGestureDetector(this, it) }
-    }
-
     private inner class LifeCycleObserver : DefaultLifecycleObserver {
         override fun onResume(owner: LifecycleOwner) {
-            _viewAttachmentManager?.onResume()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                viewNodeWindowManager?.resume(this@SceneView)
+            }
 
             // Start the drawing when the renderer is resumed.  Remove and re-add the callback
             // to avoid getting called twice.
@@ -796,12 +855,15 @@ open class SceneView @JvmOverloads constructor(
         override fun onPause(owner: LifecycleOwner) {
             Choreographer.getInstance().removeFrameCallback(frameCallback)
 
-            _viewAttachmentManager?.onPause()
-
-            activity?.setKeepScreenOn(false)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                viewNodeWindowManager?.pause()
+            }
         }
 
         override fun onDestroy(owner: LifecycleOwner) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                viewNodeWindowManager?.destroy()
+            }
             destroy()
         }
     }
@@ -832,34 +894,16 @@ open class SceneView @JvmOverloads constructor(
         }
 
         override fun onResized(width: Int, height: Int) {
+            this@SceneView.onResized(width, height)
+
             // Wait for all pending frames to be processed before returning. This is to avoid a race
             // between the surface being resized before pending frames are rendered into it.
             engine.createFence().apply {
                 wait(Fence.Mode.FLUSH, Fence.WAIT_FOR_EVER)
                 engine.destroyFence(this)
             }
-            this@SceneView.onResized(width, height)
         }
     }
-
-//    inner class CameraGestureListener : CameraGestureDetector.OnCameraGestureListener {
-//
-//        override fun onScroll(x: Int, y: Int, scrollDelta: Float) {
-//            cameraManipulator?.scroll(x, y, scrollDelta)
-//        }
-//
-//        override fun onGrabBegin(x: Int, y: Int, strafe: Boolean) {
-//            cameraManipulator?.grabBegin(x, y, strafe)
-//        }
-//
-//        override fun onGrabUpdate(x: Int, y: Int) {
-//            cameraManipulator?.grabUpdate(x, y)
-//        }
-//
-//        override fun onGrabEnd() {
-//            cameraManipulator?.grabEnd()
-//        }
-//    }
 
     class DefaultCameraNode(engine: Engine) : CameraNode(engine) {
         init {
@@ -950,16 +994,22 @@ open class SceneView @JvmOverloads constructor(
 
         fun createCameraNode(engine: Engine): CameraNode = DefaultCameraNode(engine)
 
-        val defaultCameraManipulator: ((View, CameraNode) -> Manipulator) = { view, cameraNode ->
-            Manipulator.Builder()
-                .orbitHomePosition(cameraNode.worldPosition)
-                .viewport(min(view.viewport.width, 1), min(view.viewport.height, 1))
-                .farPlane(cameraNode.far)
-                .farPlane(cameraNode.near)
-                .orbitSpeed(0.005f, 0.005f)
-                .zoomSpeed(0.05f)
-                .build(Manipulator.Mode.ORBIT)
-        }
+        fun createDefaultCameraManipulator(
+            orbitHomePosition: Position? = null,
+            targetPosition: Position? = null
+        ) = Manipulator.Builder()
+            .apply {
+                orbitHomePosition?.let { orbitHomePosition(it) }
+                targetPosition?.let { targetPosition(it) }
+            }
+//                .viewport(min(width, 1), min(height, 1))
+            .orbitSpeed(0.005f, 0.005f)
+            .zoomSpeed(0.05f)
+            .build(Manipulator.Mode.ORBIT)
+
+
+        @RequiresApi(Build.VERSION_CODES.P)
+        fun createViewNodeManager(context: Context) = ViewNode2.WindowManager(context)
 
         fun createMainLightNode(engine: Engine): LightNode = DefaultLightNode(engine)
 

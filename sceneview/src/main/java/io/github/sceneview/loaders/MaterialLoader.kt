@@ -8,11 +8,12 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.gltfio.MaterialProvider.MaterialKey
 import com.google.android.filament.gltfio.UbershaderProvider
-import io.github.sceneview.material.VideoMaterial
 import io.github.sceneview.material.kMaterialDefaultMetallic
 import io.github.sceneview.material.kMaterialDefaultReflectance
 import io.github.sceneview.material.kMaterialDefaultRoughness
 import io.github.sceneview.material.setColor
+import io.github.sceneview.material.setExternalTexture
+import io.github.sceneview.material.setInvertFrontFaceWinding
 import io.github.sceneview.material.setMetallic
 import io.github.sceneview.material.setParameter
 import io.github.sceneview.material.setReflectance
@@ -73,8 +74,14 @@ class MaterialLoader(
         createMaterial("$kMaterialsAssetFolder/video_texture_chroma_key.filamat")
     }
 
+    private val viewTextureLitMaterial by lazy {
+        createMaterial("$kMaterialsAssetFolder/view_texture_lit.filamat")
+    }
+    private val viewTextureUnlitMaterial by lazy {
+        createMaterial("$kMaterialsAssetFolder/view_texture_unlit.filamat")
+    }
+
     private val materials = mutableListOf<Material>()
-    private val videoMaterials = mutableListOf<VideoMaterial>()
     private val materialInstances = mutableListOf<MaterialInstance>()
 
     /**
@@ -269,10 +276,9 @@ class MaterialLoader(
             }
 
     fun createImageInstance(imageTexture: Texture, sampler: TextureSampler = TextureSampler2D()) =
-        createInstance(imageTextureMaterial)
-            .apply {
-                setTexture(imageTexture, sampler)
-            }
+        createInstance(imageTextureMaterial).apply {
+            setTexture(imageTexture, sampler)
+        }
 
     fun createVideoInstance(videoTexture: Texture, chromaKeyColor: Int? = null) =
         if (chromaKeyColor == null) {
@@ -282,8 +288,17 @@ class MaterialLoader(
                 setParameter("chromaKeyColor", colorOf(chromaKeyColor))
             }
         }.apply {
-            setTexture(videoTexture)
+            setExternalTexture(videoTexture)
         }
+
+    fun createViewInstance(
+        viewTexture: Texture,
+        unlit: Boolean = false,
+        invertFrontFaceWinding: Boolean = false
+    ) = createInstance(if (unlit) viewTextureUnlitMaterial else viewTextureLitMaterial).apply {
+        setExternalTexture(viewTexture)
+        setInvertFrontFaceWinding(invertFrontFaceWinding)
+    }
 
     fun destroyMaterial(material: Material) {
         engine.safeDestroyMaterialInstance(material.defaultInstance)
@@ -301,8 +316,6 @@ class MaterialLoader(
 
         materialInstances.toList().forEach { destroyMaterialInstance(it) }
         materialInstances.clear()
-        videoMaterials.toList().forEach { it.destroy() }
-        videoMaterials.clear()
         materials.toList().forEach { destroyMaterial(it) }
         materials.clear()
     }

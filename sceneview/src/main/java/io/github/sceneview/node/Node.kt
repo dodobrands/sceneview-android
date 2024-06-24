@@ -26,6 +26,7 @@ import io.github.sceneview.animation.NodeAnimator
 import io.github.sceneview.collision.Collider
 import io.github.sceneview.collision.CollisionShape
 import io.github.sceneview.collision.CollisionSystem
+import io.github.sceneview.collision.HitResult
 import io.github.sceneview.collision.Matrix
 import io.github.sceneview.collision.TransformProvider
 import io.github.sceneview.gesture.MoveGestureDetector
@@ -47,6 +48,8 @@ import io.github.sceneview.math.slerp
 import io.github.sceneview.math.times
 import io.github.sceneview.math.toMatrix
 import io.github.sceneview.math.toQuaternion
+import io.github.sceneview.safeDestroyEntity
+import io.github.sceneview.safeDestroyTransformable
 import io.github.sceneview.utils.intervalSeconds
 import kotlin.reflect.KProperty1
 
@@ -84,6 +87,11 @@ open class Node(
     TransformProvider {
 
     var isHittable: Boolean = true
+
+    /**
+     * ### Define your own custom name
+     */
+    open var name: String? = null
 
     /**
      * The node can be selected when a touch event happened.
@@ -386,6 +394,7 @@ open class Node(
     var onAddedToScene: ((scene: Scene) -> Unit)? = null
     var onRemovedFromScene: ((scene: Scene) -> Unit)? = null
 
+    var onTouch: ((e: MotionEvent, hitResult: HitResult) -> Boolean)? = null
     var onDown: ((e: MotionEvent) -> Boolean)? = null
     var onShowPress: ((e: MotionEvent) -> Unit)? = null
     var onSingleTapUp: ((e: MotionEvent) -> Boolean)? = null
@@ -830,6 +839,10 @@ open class Node(
         childNodes.forEach { it.onWorldTransformChanged() }
     }
 
+
+    open fun onTouchEvent(e: MotionEvent, hitResult: HitResult) =
+        onTouch?.invoke(e, hitResult) ?: false
+
     override fun onDown(e: MotionEvent) = onDown?.invoke(e) ?: false
     override fun onShowPress(e: MotionEvent) {
         onShowPress?.invoke(e)
@@ -837,7 +850,7 @@ open class Node(
 
     override fun onSingleTapUp(e: MotionEvent) = onSingleTapUp?.invoke(e) ?: false
     override fun onScroll(
-        e1: MotionEvent,
+        e1: MotionEvent?,
         e2: MotionEvent,
         distanceX: Float,
         distanceY: Float
@@ -848,7 +861,7 @@ open class Node(
     }
 
     override fun onFling(
-        e1: MotionEvent,
+        e1: MotionEvent?,
         e2: MotionEvent,
         velocityX: Float,
         velocityY: Float
@@ -870,7 +883,9 @@ open class Node(
 
     override fun onMove(detector: MoveGestureDetector, e: MotionEvent): Boolean {
         return if (isPositionEditable) {
-            collisionSystem?.hitTest(e)?.first { it.node == parent }?.let {
+            // Find the hit test location in the parent to place the child at the
+            // corresponding location
+            collisionSystem?.hitTest(e)?.firstOrNull { it.node == parent }?.let {
                 onMove(detector, e, it.worldPosition)
             } ?: false
         } else {
@@ -1003,8 +1018,9 @@ open class Node(
      * Detach and destroy the node and all its children.
      */
     open fun destroy() {
-        parent = null
-        transformManager.destroy(entity)
+        runCatching { parent = null }
+        engine.safeDestroyTransformable(entity)
+        engine.safeDestroyEntity(entity)
     }
 }
 

@@ -42,6 +42,8 @@ class MainActivity : AppCompatActivity(R.layout.activity_main) {
             }
         }
 
+    var anchorNodeView: View? = null
+
     var trackingFailureReason: TrackingFailureReason? = null
         set(value) {
             if (field != value) {
@@ -79,6 +81,7 @@ class MainActivity : AppCompatActivity(R.layout.activity_main) {
         instructionText = findViewById(R.id.instructionText)
         loadingView = findViewById(R.id.loadingView)
         sceneView = findViewById<ARSceneView?>(R.id.sceneView).apply {
+            lifecycle = this@MainActivity.lifecycle
             planeRenderer.isEnabled = true
             configureSession { session, config ->
                 config.depthMode = when (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
@@ -101,6 +104,7 @@ class MainActivity : AppCompatActivity(R.layout.activity_main) {
                 this@MainActivity.trackingFailureReason = reason
             }
         }
+//        sceneView.viewNodeWindowManager = ViewAttachmentManager(context, this).apply { onResume() }
     }
 
     fun addAnchorNode(anchor: Anchor) {
@@ -110,25 +114,44 @@ class MainActivity : AppCompatActivity(R.layout.activity_main) {
                     isEditable = true
                     lifecycleScope.launch {
                         isLoading = true
-                        sceneView.modelLoader.loadModelInstance(
-                            "https://sceneview.github.io/assets/models/DamagedHelmet.glb"
-                        )?.let { modelInstance ->
-                            addChildNode(
-                                ModelNode(
-                                    modelInstance = modelInstance,
-                                    // Scale to fit in a 0.5 meters cube
-                                    scaleToUnits = 0.5f,
-                                    // Bottom origin instead of center so the model base is on floor
-                                    centerOrigin = Position(y = -0.5f)
-                                ).apply {
-                                    isEditable = true
-                                }
-                            )
-                        }
+                        buildModelNode()?.let { addChildNode(it) }
+//                        buildViewNode()?.let { addChildNode(it) }
                         isLoading = false
                     }
                     anchorNode = this
                 }
         )
     }
+
+    suspend fun buildModelNode(): ModelNode? {
+        sceneView.modelLoader.loadModelInstance(
+            "https://sceneview.github.io/assets/models/DamagedHelmet.glb"
+        )?.let { modelInstance ->
+            return ModelNode(
+                modelInstance = modelInstance,
+                // Scale to fit in a 0.5 meters cube
+                scaleToUnits = 0.5f,
+                // Bottom origin instead of center so the model base is on floor
+                centerOrigin = Position(y = -0.5f)
+            ).apply {
+                isEditable = true
+            }
+        }
+        return null
+    }
+
+//    suspend fun buildViewNode(): ViewNode? {
+//        return withContext(Dispatchers.Main) {
+//            val engine = sceneView.engine
+//            val materialLoader = sceneView.materialLoader
+//            val windowManager = sceneView.viewNodeWindowManager ?: return@withContext null
+//            val view = LayoutInflater.from(materialLoader.context).inflate(R.layout.view_node_label, null, false)
+//            val ViewAttachmentManager(context, this).apply { onResume() }
+//            val viewNode = ViewNode(engine, windowManager, materialLoader, view, true, true)
+//            viewNode.position = Position(0f, -0.2f, 0f)
+//            anchorNodeView = view
+//            viewNode
+//        }
+//    }
+
 }
